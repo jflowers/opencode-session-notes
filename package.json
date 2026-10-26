@@ -1,0 +1,21 @@
+{
+  "name": "@jflowers/opencode-session-notes",
+  "version": "0.1.0",
+  "description": "opencode plugin: persistent session notes and plans with cross-session search",
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": {
+    "./server": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "typescript": "^7.0.2"
+  }
+}
