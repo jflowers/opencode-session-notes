@@ -2,7 +2,7 @@
 
 A plugin + skill that gives opencode agents a self-serve persistence layer — proactively saving findings, decisions, and evolving plans during long exploratory sessions so important context survives compaction, and enabling cross-session search so future sessions can build on prior work.
 
-**Status:** implemented (v0.1.0)
+**Status:** implemented and verified (v0.1.0, 2026-10-27)
 **Repo:** `jflowers/opencode-session-notes`
 **Runtime target:** opencode 1.x (`@opencode-ai/plugin@1.19.0`)
 
