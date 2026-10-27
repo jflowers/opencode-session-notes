@@ -1,5 +1,7 @@
 import type { Plugin, PluginModule } from "@opencode-ai/plugin"
 import { tool } from "@opencode-ai/plugin/tool"
+import { appendFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 import * as db from "./db"
 
 const INDEX_CAP = 10
@@ -20,16 +22,37 @@ function errorResult(operation: string, err: unknown) {
   }
 }
 
+function indexLines(notes: db.Note[]): string[] {
+  return notes.map((n) => `- [${n.type}] ${n.title} (id: ${n.id}, updated ${fmtTs(n.updatedAt)})`)
+}
+
+function debugLog(hook: string, entry: Record<string, unknown>) {
+  if (!process.env.SESSION_NOTES_DEBUG) return
+  try {
+    appendFileSync(join(dirname(db.notesDbPath()), "debug.log"), `${JSON.stringify({ ts: new Date().toISOString(), hook, ...entry })}\n`)
+  } catch {}
+}
+
 function renderNotesIndex(notes: db.Note[]): string {
-  const lines = notes.map(
-    (n) => `- [${n.type}] ${n.title} (id: ${n.id}, updated ${fmtTs(n.updatedAt)})`,
-  )
+  const lines = indexLines(notes)
   return [
     `<session-notes>`,
     DISCIPLINE_DIRECTIVE,
     ``,
     `Recent notes in this session (newest first — load with note_read, extend with note_save using the id and append: true):`,
     ...lines,
+    `</session-notes>`,
+  ].join("\n")
+}
+
+function renderCompactingIndex(notes: db.Note[]): string {
+  return [
+    `<session-notes>`,
+    `Persistent note index for this session. These notes live in a SQLite store that survives compaction, but their ids exist only here and in the conversation being summarized.`,
+    `Preserve these note ids verbatim in the summary (one line per note: id + title) so the next model instance can reload them with note_read. Without the ids the notes are recoverable only via note_search.`,
+    ``,
+    `Recent notes in this session (newest first):`,
+    ...indexLines(notes),
     `</session-notes>`,
   ].join("\n")
 }
@@ -44,7 +67,7 @@ const plugin: Plugin = async () => ({
   tool: {
     note_save: tool({
       description:
-        "Create or update a persistent note. PROACTIVE USE: save important findings, decisions (with rationale), and evolving plans as you work — do not wait to be asked. Notes survive compaction and are searchable by any future session. Omit id to create a new note (returns its id). Provide id (from note_list, note_search, or the system-prompt session-notes index) to update: with append: true the content is added to the existing note (timestamped separator) — use this to evolve plans; without it the content replaces the existing note.",
+        "Create or update a persistent note. PROACTIVE USE: save important findings, decisions (with rationale), and evolving plans as you work — do not wait to be asked. Notes survive compaction and are searchable by any future session. Omit id to create a new note (returns its id). Provide id (from note_list, note_search, or the session-notes index carried in the compaction summary) to update: with append: true the content is added to the existing note (timestamped separator) — use this to evolve plans; without it the content replaces the existing note.",
       args: {
         content: tool.schema
           .string()
@@ -154,7 +177,7 @@ const plugin: Plugin = async () => ({
 
     note_read: tool({
       description:
-        "Read a note's full content by id. Use to reload findings, decisions, or plans — especially after compaction, when ids are available from the system-prompt session-notes index or note_search.",
+        "Read a note's full content by id. Use to reload findings, decisions, or plans — especially after compaction, when ids are available from the session-notes index in the compaction summary or via note_search.",
       args: {
         id: tool.schema.string().describe("Note id"),
       },
@@ -271,15 +294,63 @@ const plugin: Plugin = async () => ({
   },
 
   "experimental.chat.system.transform": async (input, output) => {
+    let state = "fired"
     try {
       const sessionID = input?.sessionID
-      if (!sessionID) return
-      if (!Array.isArray(output?.system) || output.system.length === 0) return
+      if (!sessionID) {
+        state = "no-session-id"
+        return
+      }
+      if (!Array.isArray(output?.system) || output.system.length === 0) {
+        state = "no-system-array"
+        return
+      }
       const notes = db.listNotes({ sessionId: sessionID, limit: INDEX_CAP })
-      if (notes.length === 0) return
+      if (notes.length === 0) {
+        state = "no-notes"
+        return
+      }
       output.system[output.system.length - 1] += "\n\n" + renderNotesIndex(notes)
-    } catch {
-      // fail-open: never break the request pipeline
+      state = "appended"
+    } catch (err) {
+      state = `error: ${err instanceof Error ? err.message : String(err)}`
+    } finally {
+      debugLog("chat.system.transform", {
+        state,
+        sessionID: input?.sessionID ?? null,
+        systemElements: Array.isArray(output?.system) ? output.system.length : 0,
+      })
+    }
+  },
+
+  "experimental.session.compacting": async (input, output) => {
+    let state = "fired"
+    try {
+      const sessionID = input?.sessionID
+      if (!sessionID) {
+        state = "no-session-id"
+        return
+      }
+      const context = output?.context
+      if (!Array.isArray(context)) {
+        state = "no-context-array"
+        return
+      }
+      const notes = db.listNotes({ sessionId: sessionID, limit: INDEX_CAP })
+      if (notes.length === 0) {
+        state = "no-notes"
+        return
+      }
+      context.push(renderCompactingIndex(notes))
+      state = "appended"
+    } catch (err) {
+      state = `error: ${err instanceof Error ? err.message : String(err)}`
+    } finally {
+      debugLog("session.compacting", {
+        state,
+        sessionID: input?.sessionID ?? null,
+        contextElements: Array.isArray(output?.context) ? output.context.length : 0,
+      })
     }
   },
 })

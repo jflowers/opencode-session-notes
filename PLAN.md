@@ -23,13 +23,13 @@ Pattern proven by `opencode-session-search` + the `opencode-db` skill: **plugin 
 
 1. **Tools** (`src/index.ts`): 5 tools via the 1.x `tool()` helper; `export default { id: "session-notes", server } satisfies PluginModule`.
 2. **Storage**: own SQLite db at `~/.local/share/opencode-session-notes/notes.db` — read-write, WAL mode, auto-migrated. Cross-reference to opencode's own `opencode.db` (read-only) for session titles in list/search results.
-3. **Always-on injection**: an `experimental.chat.system.transform` hook appends a `<session-notes>` block to the system prompt every turn — a short discipline directive plus a recent-notes index for the current session — so note ids and the save discipline survive compaction by riding the system prompt.
+3. **Re-injection (two channels)**: an `experimental.chat.system.transform` hook appends a `<session-notes>` block (discipline directive + current-session recent-notes index) to the system prompt every turn — opportunistic, since delivery is gateway-dependent (see injection mechanics below). The primary channel is `experimental.session.compacting`: the same index is injected into the compaction prompt's context so **compaction summaries carry note ids** — in-conversation text, which demonstrably survives the gateway.
 
 Zero new dependencies — `bun:sqlite` and `crypto.randomUUID()` are built into the runtime.
 
 ### Injection mechanics (critical design constraints)
 
-- **Append to the last system element, never `push()`.** Tested model gateways (enmaas, OpenRouter) drop pushed *secondary* system messages. Appending to the primary message (the DCP pattern, empirically proven on this machine) rides the one system message that is always delivered. Pushing would also corrupt DCP's injection if this plugin ran before it, since DCP appends to the last element.
+- **Append to the last system element, never `push()`.** Pushed *secondary* system messages are dropped by the tested gateways (enmaas, OpenRouter) — proven at the model by the opencode-supervisor memo-drop investigation (glm-5-3/enmaas, claude-sonnet-5/OpenRouter; the request was verified correct through every local layer — the drop is in the gateway). The 2026-10-27 needle test (this repo) showed **append-to-last is not delivered at the model through enmaas either** — no `<session-notes>` block visible on any request after a mid-session save, and post-compaction no-tools recall of the note id failed. The system-prompt channel is therefore kept as an opportunistic secondary only (zero cost; honors gateways/credentials that pass system appends). Never `push()` regardless: pushing would also corrupt DCP's injection if this plugin ran before it, since DCP appends to the last element.
 - **Guards:** try/catch fail-open (never break the request pipeline); `Array.isArray(output?.system)` + non-empty check; skip when `input.sessionID` is undefined; skip when the session has no notes (system prompt untouched).
 - **Self-limiting:** the index is keyed by the current `sessionID` — subagent and internal sessions (title generator, summarizer) have their own ids with no notes, so nothing is injected into them.
 - **Index spec:** current session only, ordered by `updated_at DESC` (evolving plans bump `updated_at`; `created_at` would misorder append flows), capped at 10, one line per note: `[type] title (id: …, updated …)`.
@@ -136,6 +136,8 @@ Unlike session-search (strictly read-only), this plugin **writes**:
 
 Verification: `bun x tsc --noEmit`, `bun test`, restart opencode, exercise each tool live, then a **needle test** — fresh session, confirm the model can use a note id from the system-prompt index without prior mention (verifies delivery *through the gateway at the model*, not just at the API boundary — the lesson from the supervisor memo-drop investigation).
 
+**Needle test result (2026-10-27): FAILED for system-prompt delivery.** No `<session-notes>` block visible at the model on any request after a mid-session save; post-compaction no-tools recall of the note id failed (the id had been pruned from context; the index was the only remaining source). Conclusion: the enmaas gateway drops system-transform content for append-to-last as well as push, matching the supervisor's finding for push. Follow-ups shipped with this result: (1) debug instrumentation behind `SESSION_NOTES_DEBUG=1` — one JSON line per hook invocation in `~/.local/share/opencode-session-notes/debug.log` with states `appended` / `no-notes` / `no-session-id` / `no-system-array` / `no-context-array` / `error: …`; restart with the env var set, send a message, read the log to separate "hook fires locally, gateway drops it" from "hook never fires"; (2) `experimental.session.compacting` implemented as the primary delivery channel — **verified PASS (2026-10-27)**: instrumentation confirms the transform hook fires and appends on every request while the model sees nothing (gateway drop, not a local failure), and a manual `/compact` delivered end-to-end — the compacting hook fired (`session.compacting` → `contextElements: 1`), the generated summary carried both note ids in a preserve-verbatim section, and the summary became the top of the model's context.
+
 ## 9. Registration & Rollout
 
 1. `/Users/jflowers/Projects/github/jflowers/opencode-session-notes` added to the `plugin` array in `~/.config/opencode/opencode.jsonc`.
@@ -152,12 +154,12 @@ Verification: `bun x tsc --noEmit`, `bun test`, restart opencode, exercise each 
 | 4 | `note_save` supports append mode (in addition to full replace) |
 | 5 | DCP integration is future work only |
 | 6 | `note_list`/`note_search` results include session title (looked up from opencode.db) |
-| 7 | Within-session re-surface via own `system.transform` hook (append-to-last, never push); skill keeps save discipline only |
+| 7 | Within-session re-surface: compaction-summary index via `experimental.session.compacting` (primary, in-conversation); `system.transform` append-to-last kept as opportunistic secondary (gateway-dependent, never push); skill keeps save discipline only |
 | 8 | Recent-notes index is **current-session only** (cross-session needs served by `note_search` + skill retrieval triggers; project-wide index would add standing prompt noise) |
 
 ## 11. Future Work (not v1)
 
-- **DCP compaction hook:** `experimental.session.compacting` accepts `output.context: string[]` — inject the session's note index into the compaction prompt so summaries carry note pointers. Also verify whether the compaction summarization call already passes through the same request-prep path (the index may ride along for free).
+- **Compaction routing (answered 2026-10-27):** DCP-range compression (the `compress` tool) **bypasses** the native compacting hook — no `session.compacting` log lines during compress calls; native `/compact` fires it. Mitigated in global config: DCP `experimental.customPrompts` enabled, with an override at `~/.config/opencode/dcp-prompts/overrides/compress-range.md` adding a PERSISTENT CROSS-SESSION IDENTIFIERS section (durable ids copied verbatim into summaries) — the skill's compress discipline is now structural, not just behavioral.
 - **FTS5 index** on note content if volume grows beyond what `LIKE` handles comfortably.
 - **Note linking** — reference related notes from other notes.
 - **Export** — dump notes to markdown files for external consumption.
