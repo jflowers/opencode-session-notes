@@ -7,7 +7,7 @@ metadata:
 
 # Session Notes
 
-You have persistent note tools backed by a local SQLite store (`~/.local/share/opencode-session-notes/notes.db`). Notes survive context compaction and are searchable by any future session, on any project. Compaction summaries carry a `<session-notes>` index of this session's recent notes (the plugin injects it into the compaction prompt), and — on gateways that honor system-prompt appends — the system prompt may carry the same block.
+You have persistent note tools backed by a local SQLite store (`~/.local/share/opencode-session-notes/notes.db`). Notes survive context compaction and are searchable by any future session, on any project. A `<session-notes>` index of this session's recent notes is delivered as a trailing context message on every request (plugin-injected, labeled as plugin context), and compaction summaries carry the same index (the plugin injects it into the compaction prompt).
 
 ## When to save — proactively, without being asked
 
@@ -24,7 +24,7 @@ Do not wait to be asked. The cost of a note is one tool call; the cost of a lost
 
 - **At session start**, before exploring a topic: `note_search` with the key terms. Prior sessions may already have findings, decisions, or plans.
 - **Before deep-diving** into an area: check whether it was already covered.
-- **After compaction**: the compaction summary's `<session-notes>` index lists recent notes with ids (fall back to `note_list`/`note_search` if absent) — `note_read` any you need, and `note_save` with `id` + `append: true` to continue evolving them.
+- **After compaction**: the compaction summary's `<session-notes>` index lists recent notes with ids, and the per-request index message returns on the next request regardless (fall back to `note_list`/`note_search` if absent) — `note_read` any you need, and `note_save` with `id` + `append: true` to continue evolving them.
 - **When compressing conversation ranges yourself** (e.g., the DCP `compress` tool): include the session's note ids in the summary — `note_list` first if they aren't in context — so later turns can still `note_read` them.
 - **When resuming** a topic in a new session: search, read the plan, continue from where it left off.
 
@@ -63,4 +63,4 @@ Do not wait to be asked. The cost of a note is one tool call; the cost of a lost
 3. New discovery made → `note_save({ type: "finding", title: "...", content: "...", tags: [...] })` — keep the returned `id`
 4. Design choice made → `note_save({ type: "decision", ... })`
 5. Plan progresses → `note_save({ id: <plan id>, content: "step 3 done: ...", append: true })`
-6. Compaction happens → ids preserved in the summary's `<session-notes>` index (or recoverable via `note_search`) → keep appending
+6. Compaction happens → ids preserved in the summary's `<session-notes>` index and re-delivered by the per-request index message → keep appending

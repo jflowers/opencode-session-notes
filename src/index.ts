@@ -63,11 +63,13 @@ function sessionLabel(sessionId: string, titles: Record<string, string>, current
   return `${title}${suffix}`
 }
 
+let indexMessageSeq = 0
+
 const plugin: Plugin = async () => ({
   tool: {
     note_save: tool({
       description:
-        "Create or update a persistent note. PROACTIVE USE: save important findings, decisions (with rationale), and evolving plans as you work — do not wait to be asked. Notes survive compaction and are searchable by any future session. Omit id to create a new note (returns its id). Provide id (from note_list, note_search, or the session-notes index carried in the compaction summary) to update: with append: true the content is added to the existing note (timestamped separator) — use this to evolve plans; without it the content replaces the existing note.",
+        "Create or update a persistent note. PROACTIVE USE: save important findings, decisions (with rationale), and evolving plans as you work — do not wait to be asked. Notes survive compaction and are searchable by any future session. Omit id to create a new note (returns its id). Provide id (from note_list, note_search, or the session-notes index delivered with each request and in the compaction summary) to update: with append: true the content is added to the existing note (timestamped separator) — use this to evolve plans; without it the content replaces the existing note.",
       args: {
         content: tool.schema
           .string()
@@ -177,7 +179,7 @@ const plugin: Plugin = async () => ({
 
     note_read: tool({
       description:
-        "Read a note's full content by id. Use to reload findings, decisions, or plans — especially after compaction, when ids are available from the session-notes index in the compaction summary or via note_search.",
+        "Read a note's full content by id. Use to reload findings, decisions, or plans — especially after compaction, when ids are available from the session-notes index (delivered as a per-request context message and in the compaction summary) or via note_search.",
       args: {
         id: tool.schema.string().describe("Note id"),
       },
@@ -350,6 +352,56 @@ const plugin: Plugin = async () => ({
         state,
         sessionID: input?.sessionID ?? null,
         contextElements: Array.isArray(output?.context) ? output.context.length : 0,
+      })
+    }
+  },
+
+  "experimental.chat.messages.transform": async (_input, output) => {
+    let state = "fired"
+    try {
+      const msgs = Array.isArray(output?.messages) ? output.messages : undefined
+      if (!msgs || msgs.length === 0) {
+        state = "no-messages"
+        return
+      }
+      let sessionID: string | undefined
+      for (const candidate of msgs) {
+        const candidateId = candidate?.info?.sessionID
+        if (typeof candidateId === "string") {
+          sessionID = candidateId
+          break
+        }
+      }
+      if (!sessionID) {
+        state = "no-session-id"
+        return
+      }
+      const notes = db.listNotes({ sessionId: sessionID, limit: INDEX_CAP })
+      if (notes.length === 0) {
+        state = "no-notes"
+        return
+      }
+      msgs.push({
+        info: {
+          id: `session-notes-index-${++indexMessageSeq}`,
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+        },
+        parts: [
+          {
+            type: "text",
+            text: `[session-notes] persistent note index — plugin context, not user input:\n${renderNotesIndex(notes)}`,
+          },
+        ],
+      } as unknown as (typeof msgs)[number])
+      state = "appended"
+    } catch (err) {
+      state = `error: ${err instanceof Error ? err.message : String(err)}`
+    } finally {
+      debugLog("chat.messages.transform", {
+        state,
+        messageCount: Array.isArray(output?.messages) ? output.messages.length : 0,
       })
     }
   },
