@@ -161,6 +161,43 @@ describe("listNotes", () => {
     db.saveNote(makeInput({ sessionId: "ses_w", title: "W-other", tags: ["50xxdone"] }), path)
     expect(db.listNotes({ sessionId: "ses_w", tags: ["50%_done"] }, path).map((n) => n.title)).toEqual(["W-pct"])
   })
+
+  test("tag filter is exact: no prefix, substring, or case-insensitive matches", () => {
+    db.saveNote(makeInput({ sessionId: "ses_x", title: "X-exact", tags: ["topic:alpha"] }), path)
+    db.saveNote(makeInput({ sessionId: "ses_x", title: "X-longer", tags: ["topic:alpha-2"] }), path)
+    db.saveNote(makeInput({ sessionId: "ses_x", title: "X-prefixed", tags: ["old-topic:alpha"] }), path)
+    db.saveNote(makeInput({ sessionId: "ses_x", title: "X-quote", tags: ['say "hi"'] }), path)
+    const titles = (tags: string[]) => db.listNotes({ sessionId: "ses_x", tags }, path).map((n) => n.title)
+
+    expect(titles(["topic:alpha"])).toEqual(["X-exact"])
+    expect(titles([" topic:alpha "])).toEqual(["X-exact"])
+    expect(titles(["topic:alph"])).toEqual([])
+    expect(titles(["Topic:Alpha"])).toEqual([])
+    expect(titles(['say "hi"'])).toEqual(["X-quote"])
+    expect(titles(["hi"])).toEqual([])
+  })
+
+  test("tag filter tolerates NULL and malformed tags columns", () => {
+    db.saveNote(makeInput({ sessionId: "ses_bad", title: "Bad-good", tags: ["ok"] }), path)
+    const raw = new Database(path)
+    try {
+      raw
+        .prepare(
+          `INSERT INTO note (id, session_id, type, title, content, tags, project_directory, created_at, updated_at)
+           VALUES (?, 'ses_bad', 'note', ?, 'c', ?, NULL, 1, 1)`,
+        )
+        .run("bad-1", "Bad-null", null)
+      raw
+        .prepare(
+          `INSERT INTO note (id, session_id, type, title, content, tags, project_directory, created_at, updated_at)
+           VALUES (?, 'ses_bad', 'note', ?, 'c', ?, NULL, 1, 1)`,
+        )
+        .run("bad-2", "Bad-garbage", "not json ok")
+    } finally {
+      raw.close()
+    }
+    expect(db.listNotes({ sessionId: "ses_bad", tags: ["ok"] }, path).map((n) => n.title)).toEqual(["Bad-good"])
+  })
 })
 
 describe("searchNotes", () => {
@@ -222,6 +259,7 @@ describe("searchNotes", () => {
     expect(db.searchNotes({ query: "shared", sessionId: "ses_scoped" }, path).length).toBe(1)
     expect(db.searchNotes({ query: "shared", projectDirectory: "/p2" }, path).length).toBe(1)
     expect(db.searchNotes({ query: "shared", tags: ["infra"] }, path).length).toBe(1)
+    expect(db.searchNotes({ query: "shared", tags: ["infr"] }, path).length).toBe(0)
     expect(db.searchNotes({ query: "shared", type: "finding" }, path).length).toBe(2)
   })
 
