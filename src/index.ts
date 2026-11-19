@@ -138,11 +138,15 @@ const plugin: Plugin = async () => ({
 
     note_list: tool({
       description:
-        "List notes for a session (default: the current session), newest first. Each line shows type, title, id, and updated time — use the id with note_read to load full content, or note_save with append: true to extend. Filter by type or project_directory if needed.",
+        "List notes for a session (default: the current session), newest first. Each line shows type, title, id, and updated time — use the id with note_read to load full content, or note_save with append: true to extend. Filter by type, project_directory, or tags if needed.",
       args: {
         session_id: tool.schema.string().optional().describe("Session id (default: current session)"),
         type: tool.schema.enum(["note", "plan", "finding", "decision"]).optional(),
         project_directory: tool.schema.string().optional().describe("Filter by project directory"),
+        tags: tool.schema
+          .array(tool.schema.string())
+          .optional()
+          .describe("Restrict to notes with any of these tags"),
         limit: tool.schema.number().optional().describe("Max notes to return (default: 20, max: 100)"),
       },
       async execute(args, context) {
@@ -152,6 +156,7 @@ const plugin: Plugin = async () => ({
             sessionId,
             type: args.type,
             projectDirectory: args.project_directory,
+            tags: args.tags,
             limit: args.limit,
           })
           if (notes.length === 0) {
