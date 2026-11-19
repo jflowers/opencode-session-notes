@@ -244,18 +244,19 @@ export function getNote(id: string, path: string = notesDbPath()): Note | null {
 
 /**
  * Append an "any of these tags" clause (shared by listNotes and searchNotes).
- * Blank tags are ignored; if none remain, no clause is added.
+ * Matching is exact and case-sensitive against whole tags (after trimming the
+ * filter values, mirroring how tags are normalized on save) — "topic:alpha"
+ * does not match "topic:alpha-2". Blank tags are ignored; if none remain, no
+ * clause is added.
  */
 function addTagsFilter(tags: string[] | undefined, where: string[], params: SQLQueryBindings[]): void {
   if (!tags || tags.length === 0) return
-  const tagClauses: string[] = []
-  for (const tag of tags) {
-    const t = String(tag).trim()
-    if (!t) continue
-    tagClauses.push(`tags LIKE ? ESCAPE '\\'`)
-    params.push(`%${escapeLike(JSON.stringify(t)).slice(1, -1)}%`)
-  }
-  if (tagClauses.length > 0) where.push(`(${tagClauses.join(" OR ")})`)
+  const wanted = [...new Set(tags.map((t) => String(t).trim()).filter((t) => t.length > 0))]
+  if (wanted.length === 0) return
+  where.push(
+    `EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(note.tags) THEN note.tags ELSE '[]' END) WHERE value IN (${wanted.map(() => "?").join(", ")}))`,
+  )
+  params.push(...wanted)
 }
 
 export type ListFilter = {

@@ -146,7 +146,7 @@ const plugin: Plugin = async () => ({
         tags: tool.schema
           .array(tool.schema.string())
           .optional()
-          .describe("Restrict to notes with any of these tags"),
+          .describe("Restrict to notes having any of these tags (exact, case-sensitive match)"),
         limit: tool.schema.number().optional().describe("Max notes to return (default: 20, max: 100)"),
       },
       async execute(args, context) {
@@ -236,7 +236,7 @@ const plugin: Plugin = async () => ({
         tags: tool.schema
           .array(tool.schema.string())
           .optional()
-          .describe("Restrict to notes with any of these tags"),
+          .describe("Restrict to notes having any of these tags (exact, case-sensitive match)"),
         limit: tool.schema.number().optional().describe("Max notes to return (default: 25, max: 200)"),
       },
       async execute(args, context) {
