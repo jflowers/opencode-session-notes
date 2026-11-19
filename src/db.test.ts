@@ -134,6 +134,33 @@ describe("listNotes", () => {
       expect(all[i - 1].updatedAt).toBeGreaterThanOrEqual(all[i].updatedAt)
     }
   })
+
+  test("filters by tags (any-of), combined with session scope", () => {
+    db.saveNote(makeInput({ sessionId: "ses_t", title: "T-alpha", tags: ["topic:alpha", "x"] }), path)
+    db.saveNote(makeInput({ sessionId: "ses_t", title: "T-beta", tags: ["topic:beta"] }), path)
+    db.saveNote(makeInput({ sessionId: "ses_t", title: "T-none" }), path)
+    db.saveNote(makeInput({ sessionId: "ses_t2", title: "T2-alpha", tags: ["topic:alpha"] }), path)
+
+    const titles = (f: db.ListFilter) =>
+      db
+        .listNotes(f, path)
+        .map((n) => n.title)
+        .sort()
+
+    expect(titles({ sessionId: "ses_t", tags: ["topic:alpha"] })).toEqual(["T-alpha"])
+    expect(titles({ sessionId: "ses_t", tags: ["topic:alpha", "topic:beta"] })).toEqual(["T-alpha", "T-beta"])
+    expect(titles({ tags: ["topic:alpha"] })).toEqual(["T-alpha", "T2-alpha"])
+    expect(titles({ sessionId: "ses_t", tags: ["topic:gamma"] })).toEqual([])
+    // empty / blank tag lists apply no filter
+    expect(titles({ sessionId: "ses_t", tags: [] })).toEqual(["T-alpha", "T-beta", "T-none"])
+    expect(titles({ sessionId: "ses_t", tags: ["  "] })).toEqual(["T-alpha", "T-beta", "T-none"])
+  })
+
+  test("tag filter escapes LIKE wildcards", () => {
+    db.saveNote(makeInput({ sessionId: "ses_w", title: "W-pct", tags: ["50%_done"] }), path)
+    db.saveNote(makeInput({ sessionId: "ses_w", title: "W-other", tags: ["50xxdone"] }), path)
+    expect(db.listNotes({ sessionId: "ses_w", tags: ["50%_done"] }, path).map((n) => n.title)).toEqual(["W-pct"])
+  })
 })
 
 describe("searchNotes", () => {

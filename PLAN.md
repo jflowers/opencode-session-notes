@@ -65,7 +65,7 @@ CREATE INDEX idx_note_project ON note(project_directory);
 | Tool | Purpose | Key args |
 |---|---|---|
 | **`note_save`** | Create or update/append a note | `content`, `title?` (required when creating), `type?` (default `"note"`), `tags?`, `id?` (omit = create), `append?` |
-| **`note_list`** | List notes for a session | `session_id?` (defaults to current), `type?`, `project_directory?`, `limit?` (default 20, max 100) |
+| **`note_list`** | List notes for a session | `session_id?` (defaults to current), `type?`, `project_directory?`, `tags?` (any-of, same matching as `note_search`), `limit?` (default 20, max 100) |
 | **`note_read`** | Read full content of one note | `id` |
 | **`note_search`** | Search across all sessions | `query`, `type?`, `project_directory?`, `session_id?`, `tags?`, `limit?` (default 25, max 200) |
 | **`note_delete`** | Remove a note | `id` |

@@ -242,10 +242,27 @@ export function getNote(id: string, path: string = notesDbPath()): Note | null {
   }
 }
 
+/**
+ * Append an "any of these tags" clause (shared by listNotes and searchNotes).
+ * Blank tags are ignored; if none remain, no clause is added.
+ */
+function addTagsFilter(tags: string[] | undefined, where: string[], params: SQLQueryBindings[]): void {
+  if (!tags || tags.length === 0) return
+  const tagClauses: string[] = []
+  for (const tag of tags) {
+    const t = String(tag).trim()
+    if (!t) continue
+    tagClauses.push(`tags LIKE ? ESCAPE '\\'`)
+    params.push(`%${escapeLike(JSON.stringify(t)).slice(1, -1)}%`)
+  }
+  if (tagClauses.length > 0) where.push(`(${tagClauses.join(" OR ")})`)
+}
+
 export type ListFilter = {
   sessionId?: string
   type?: NoteType
   projectDirectory?: string
+  tags?: string[]
   limit?: number
 }
 
@@ -266,6 +283,7 @@ export function listNotes(filter: ListFilter, path: string = notesDbPath()): Not
     where.push(`project_directory = ?`)
     params.push(filter.projectDirectory)
   }
+  addTagsFilter(filter.tags, where, params)
 
   const whereSql = where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""
   const db = openNotesDB(path)
@@ -328,16 +346,7 @@ export function searchNotes(filter: SearchFilter, path: string = notesDbPath()):
     where.push(`project_directory = ?`)
     params.push(filter.projectDirectory)
   }
-  if (filter.tags && filter.tags.length > 0) {
-    const tagClauses: string[] = []
-    for (const tag of filter.tags) {
-      const t = String(tag).trim()
-      if (!t) continue
-      tagClauses.push(`tags LIKE ? ESCAPE '\\'`)
-      params.push(`%${escapeLike(JSON.stringify(t)).slice(1, -1)}%`)
-    }
-    if (tagClauses.length > 0) where.push(`(${tagClauses.join(" OR ")})`)
-  }
+  addTagsFilter(filter.tags, where, params)
 
   const db = openNotesDB(path)
   try {
