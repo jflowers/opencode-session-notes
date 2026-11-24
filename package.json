@@ -38,7 +38,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "latest"
+    "@opencode-ai/plugin": "1.19.0"
   },
   "devDependencies": {
     "@types/bun": "^1.4.3",
