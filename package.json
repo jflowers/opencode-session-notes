@@ -1,11 +1,37 @@
 {
-  "name": "@jflowers/opencode-session-notes",
+  "name": "opencode-session-notes",
   "version": "0.1.0",
   "description": "opencode plugin: persistent session notes and plans with cross-session search",
   "type": "module",
+  "main": "./src/index.ts",
   "license": "Apache-2.0",
   "exports": {
+    ".": "./src/index.ts",
     "./server": "./src/index.ts"
+  },
+  "files": [
+    "src/",
+    "!src/**/*.test.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jflowers/opencode-session-notes.git"
+  },
+  "homepage": "https://github.com/jflowers/opencode-session-notes#readme",
+  "bugs": {
+    "url": "https://github.com/jflowers/opencode-session-notes/issues"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin"
+  ],
+  "engines": {
+    "opencode": ">=1.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
