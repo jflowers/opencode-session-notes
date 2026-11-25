@@ -12,6 +12,9 @@ In `~/.config/opencode/opencode.jsonc` (or a project's `opencode.json`):
 }
 ```
 
+The plugin also loads its `session-notes` skill (when and how to use the note
+tools); there is nothing to link into `~/.config/opencode`.
+
 Requires opencode 1.19.0 or later.
 
 ## Releasing

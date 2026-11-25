@@ -3,6 +3,7 @@ import { tool } from "@opencode-ai/plugin/tool"
 import { appendFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import * as db from "./db"
+import { registerSkills } from "./skills"
 
 const INDEX_CAP = 10
 const MAX_CONTENT_CHARS = 100_000
@@ -66,6 +67,7 @@ function sessionLabel(sessionId: string, titles: Record<string, string>, current
 let indexMessageSeq = 0
 
 const plugin: Plugin = async () => ({
+  config: async (config) => registerSkills(config),
   tool: {
     note_save: tool({
       description:
